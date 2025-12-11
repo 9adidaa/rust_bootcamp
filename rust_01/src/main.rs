@@ -13,6 +13,18 @@ fn print_help() {
 fn main() {
     let args: Vec<String> = env::args().collect();
 
+    if args.len() > 1
+        && args[1].starts_with("--")
+        && args[1] != "--top"
+        && args[1] != "--min-length"
+        && args[1] != "--ignore-case"
+        && args[1] != "-h"
+        && args[1] != "--help"
+    {
+        eprintln!("error");
+        std::process::exit(2);
+    }
+
     if args.len() == 2 && (args[1] == "--help" || args[1] == "-h") {
         print_help();
         return;
@@ -26,12 +38,20 @@ fn main() {
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "--top" => { top_n = args[i + 1].parse().unwrap_or(10); i += 1; }
-            "--min-length" => { min_length = args[i + 1].parse().unwrap_or(1); i += 1; }
+            "--top" => {
+                top_n = args[i + 1].parse().unwrap_or(10);
+                i += 1;
+            }
+            "--min-length" => {
+                min_length = args[i + 1].parse().unwrap_or(1);
+                i += 1;
+            }
             "--ignore-case" => ignore_case = true,
             other => {
                 if !other.starts_with('-') {
-                    if !text.is_empty() { text.push(' '); }
+                    if !text.is_empty() {
+                        text.push(' ');
+                    }
                     text.push_str(other);
                 }
             }
@@ -50,8 +70,9 @@ fn main() {
     let mut freq: HashMap<String, usize> = HashMap::new();
 
     for w in text.split_whitespace() {
-        if w.len() >= min_length {
-            *freq.entry(w.to_string()).or_insert(0) += 1;
+        let clean = w.trim_matches(|c: char| !c.is_alphanumeric());
+        if clean.len() >= min_length && !clean.is_empty() {
+            *freq.entry(clean.to_string()).or_insert(0) += 1;
         }
     }
 
@@ -65,7 +86,9 @@ fn main() {
     }
 
     for (i, (w, c)) in list.iter().enumerate() {
-        if i >= top_n { break; }
+        if i >= top_n {
+            break;
+        }
         println!("{}: {}", w, c);
     }
 }
