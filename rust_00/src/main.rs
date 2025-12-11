@@ -52,15 +52,16 @@ fn main() {
         std::process::exit(2);
     }
 
-    if args[1] == "--upper" {
-        if args.len() >= 3 {
-            println!("{}", args[2].to_uppercase());
-        } else {
-            eprintln!("error");
-            std::process::exit(2);
-        }
-        return;
+if args[1] == "--upper" {
+    if args.len() >= 3 {
+        println!("HELLO, {}!", args[2].to_uppercase());
+    } else {
+        eprintln!("error");
+        std::process::exit(2);
     }
+    return;
+}
+
 
     if args[1] == "--repeat" {
         if args.len() >= 3 {
