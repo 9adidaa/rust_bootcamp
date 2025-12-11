@@ -1,5 +1,5 @@
 use std::env;
-use std::fs::{OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
 
 fn usage() {
@@ -13,8 +13,8 @@ fn usage() {
 }
 
 fn parse_offset(s: &str) -> u64 {
-    if s.starts_with("0x") {
-        u64::from_str_radix(&s[2..], 16).unwrap_or(0)
+    if let Some(hex) = s.strip_prefix("0x") {
+        u64::from_str_radix(hex, 16).unwrap_or(0)
     } else {
         s.parse().unwrap_or(0)
     }
@@ -49,7 +49,7 @@ fn print_hexdump(bytes: &[u8], start: u64) {
         for j in 0..16 {
             if i + j < bytes.len() {
                 let c = bytes[i + j];
-                if c >= 0x20 && c <= 0x7E {
+                if (0x20..=0x7E).contains(&c) {
                     print!("{}", c as char);
                 } else {
                     print!(".");
@@ -63,6 +63,26 @@ fn print_hexdump(bytes: &[u8], start: u64) {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+
+    // invalid option check
+    if args.len() > 1
+        && args[1].starts_with('-')
+        && args[1] != "-h"
+        && args[1] != "--help"
+        && args[1] != "-f"
+        && args[1] != "--file"
+        && args[1] != "-r"
+        && args[1] != "--read"
+        && args[1] != "-w"
+        && args[1] != "--write"
+        && args[1] != "-o"
+        && args[1] != "--offset"
+        && args[1] != "-s"
+        && args[1] != "--size"
+    {
+        eprintln!("error");
+        std::process::exit(2);
+    }
 
     if args.len() == 1 {
         usage();
@@ -78,12 +98,27 @@ fn main() {
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "-h" | "--help" => { usage(); return; }
-            "-f" | "--file" => { file = args[i+1].clone(); i += 1; }
+            "-h" | "--help" => {
+                usage();
+                return;
+            }
+            "-f" | "--file" => {
+                file = args[i + 1].clone();
+                i += 1;
+            }
             "-r" | "--read" => read_mode = true,
-            "-w" | "--write" => { write_hex = args[i+1].clone(); i += 1; }
-            "-o" | "--offset" => { offset = parse_offset(&args[i+1]); i += 1; }
-            "-s" | "--size" => { size = args[i+1].parse().unwrap_or(0); i += 1; }
+            "-w" | "--write" => {
+                write_hex = args[i + 1].clone();
+                i += 1;
+            }
+            "-o" | "--offset" => {
+                offset = parse_offset(&args[i + 1]);
+                i += 1;
+            }
+            "-s" | "--size" => {
+                size = args[i + 1].parse().unwrap_or(0);
+                i += 1;
+            }
             _ => {}
         }
         i += 1;
@@ -99,13 +134,32 @@ fn main() {
     }
 
     if !write_hex.is_empty() {
-        let mut f = OpenOptions::new().read(true).write(true).create(true).open(&file).unwrap();
+        let mut f = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&file)
+            .unwrap();
+
         let bytes = hex_to_bytes(&write_hex);
         f.seek(SeekFrom::Start(offset)).unwrap();
         f.write_all(&bytes).unwrap();
+
         println!("Writing {} bytes at offset 0x{:08x}", bytes.len(), offset);
         println!("Hex: {}", write_hex);
-        let ascii: String = bytes.iter().map(|b| if *b >= 0x20 && *b <= 0x7E { *b as char } else { '.' }).collect();
+
+        let ascii: String = bytes
+            .iter()
+            .map(|b| {
+                if (0x20..=0x7E).contains(b) {
+                    *b as char
+                } else {
+                    '.'
+                }
+            })
+            .collect();
+
         println!("ASCII: {}", ascii);
         println!("✓ Successfully written");
         return;
