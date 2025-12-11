@@ -4,20 +4,16 @@ use std::io::{self, Read};
 
 fn print_help() {
     println!("Usage: wordfreq [OPTIONS]");
-    println!("Count word frequency in text");
-    println!("Arguments:");
-    println!("  Text to analyze (or use stdin)");
-    println!("Options:");
-    println!("  --top N          Show top N words [default: 10]");
-    println!("  --min-length N   Ignore words shorter than N [default: 1]");
-    println!("  --ignore-case    Case insensitive counting");
-    println!("  -h, --help       Show this help message");
+    println!("--top N          Show top N words [default: 10]");
+    println!("--min-length N   Minimum word length");
+    println!("--ignore-case    Case insensitive");
+    println!("-h, --help       Show help");
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() == 2 && (args[1] == "-h" || args[1] == "--help") {
+    if args.len() == 2 && (args[1] == "--help" || args[1] == "-h") {
         print_help();
         return;
     }
@@ -25,61 +21,42 @@ fn main() {
     let mut top_n = 10usize;
     let mut min_length = 1usize;
     let mut ignore_case = false;
-    let mut text_input = String::new();
+    let mut text = String::new();
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "--top" => {
-                if i + 1 < args.len() {
-                    top_n = args[i + 1].parse().unwrap_or(10);
-                    i += 1;
-                }
-            }
-            "--min-length" => {
-                if i + 1 < args.len() {
-                    min_length = args[i + 1].parse().unwrap_or(1);
-                    i += 1;
-                }
-            }
-            "--ignore-case" => {
-                ignore_case = true;
-            }
+            "--top" => { top_n = args[i + 1].parse().unwrap_or(10); i += 1; }
+            "--min-length" => { min_length = args[i + 1].parse().unwrap_or(1); i += 1; }
+            "--ignore-case" => ignore_case = true,
             other => {
                 if !other.starts_with('-') {
-                    if !text_input.is_empty() {
-                        text_input.push(' ');
-                    }
-                    text_input.push_str(other);
+                    if !text.is_empty() { text.push(' '); }
+                    text.push_str(other);
                 }
             }
         }
         i += 1;
     }
 
-    let mut input = String::new();
-    if text_input.is_empty() {
-        io::stdin().read_to_string(&mut input).unwrap();
-    } else {
-        input = text_input;
+    if text.is_empty() {
+        io::stdin().read_to_string(&mut text).unwrap();
     }
 
     if ignore_case {
-        input = input.to_lowercase();
+        text = text.to_lowercase();
     }
 
-    let mut map: HashMap<String, usize> = HashMap::new();
+    let mut freq: HashMap<String, usize> = HashMap::new();
 
-    for raw in input.split_whitespace() {
-        let w = raw.trim_matches(|c: char| !c.is_alphanumeric());
-        if w.len() < min_length || w.is_empty() {
-            continue;
+    for w in text.split_whitespace() {
+        if w.len() >= min_length {
+            *freq.entry(w.to_string()).or_insert(0) += 1;
         }
-        *map.entry(w.to_string()).or_insert(0) += 1;
     }
 
-    let mut vec: Vec<(String, usize)> = map.into_iter().collect();
-    vec.sort_by(|a, b| b.1.cmp(&a.1));
+    let mut list: Vec<(String, usize)> = freq.into_iter().collect();
+    list.sort_by(|a, b| b.1.cmp(&a.1));
 
     if top_n == 10 {
         println!("Word frequency:");
@@ -87,10 +64,8 @@ fn main() {
         println!("Top {} words:", top_n);
     }
 
-    for (idx, (word, count)) in vec.iter().enumerate() {
-        if idx >= top_n {
-            break;
-        }
-        println!("{}: {}", word, count);
+    for (i, (w, c)) in list.iter().enumerate() {
+        if i >= top_n { break; }
+        println!("{}: {}", w, c);
     }
 }
