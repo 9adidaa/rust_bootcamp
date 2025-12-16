@@ -3,10 +3,13 @@ use std::collections::{BinaryHeap, HashSet};
 use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, Write};
+use std::process;
 use std::thread;
 use std::time::Duration;
 
 type Cost = u32;
+type Path = Vec<(usize, usize)>;
+type ParentMap = Vec<Vec<Option<(usize, usize)>>>;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -41,7 +44,11 @@ fn main() -> io::Result<()> {
             "--both" => both = true,
             "--animate" => animate = true,
             arg if !arg.starts_with('-') => map_file = Some(arg.to_string()),
-            _ => {}
+            _ => {
+                println!("Unknown option: {}", args[i]);
+                print_help();
+                process::exit(2);
+            }
         }
         i += 1;
     }
@@ -50,13 +57,17 @@ fn main() -> io::Result<()> {
 
     if let Some(mut gen_str) = generate {
         gen_str = gen_str.replace('*', "x");
-        let parts: Vec<usize> = gen_str.split('x').map(|s| s.trim().parse().unwrap()).collect();
+        let parts: Vec<usize> = gen_str
+            .split('x')
+            .map(|s| s.trim().parse().unwrap())
+            .collect();
         let rows = parts[0];
         let cols = parts[1];
         grid = Some(generate_map(rows, cols));
         if let Some(out_file) = output {
-            save_map(&grid.as_ref().unwrap(), &out_file)?;
-            println!("Generated map saved to {}.", out_file);
+            save_map(grid.as_ref().unwrap(), &out_file)?;
+            println!("Map saved to: {}", out_file);
+            return Ok(());
         }
     } else if let Some(file) = map_file {
         grid = Some(read_map(&file)?);
@@ -83,24 +94,20 @@ fn main() -> io::Result<()> {
         print_step_costs(&max_path, g);
     }
 
-    if visualize {
-        if let Some(ref g) = grid {
-            println!("\nHEXADECIMAL GRID (rainbow gradient):");
-            print_grid_colored(g, &vec![], "");
-            if both {
-                let (_, min_path, _, max_path) = compute_paths(g);
-                println!("\nMIN COST PATH (shown in WHITE):");
-                print_grid_colored(g, &min_path, "white");
-                println!("\nMAX COST PATH (shown in RED):");
-                print_grid_colored(g, &max_path, "red");
-            }
+    if visualize && let Some(ref g) = grid {
+        println!("\nHEXADECIMAL GRID (rainbow gradient):");
+        print_grid_colored(g, &vec![], "");
+        if both {
+            let (_, min_path, _, max_path) = compute_paths(g);
+            println!("\nMIN COST PATH (shown in WHITE):");
+            print_grid_colored(g, &min_path, "white");
+            println!("\nMAX COST PATH (shown in RED):");
+            print_grid_colored(g, &max_path, "red");
         }
     }
 
-    if animate {
-        if let Some(ref g) = grid {
-            animate_min(g);
-        }
+    if animate && let Some(ref g) = grid {
+        animate_min(g);
     }
 
     Ok(())
@@ -130,10 +137,9 @@ fn generate_map(rows: usize, cols: usize) -> Vec<Vec<u8>> {
     let inc_row = 12u32;
     let inc_col = 21u32;
     let mut grid = vec![vec![0u8; cols]; rows];
-    for i in 0..rows {
-        for j in 0..cols {
-            let val = ((i as u32 * inc_row + j as u32 * inc_col) % 256) as u8;
-            grid[i][j] = val;
+    for (i, row) in grid.iter_mut().enumerate() {
+        for (j, cell) in row.iter_mut().enumerate() {
+            *cell = ((i as u32 * inc_row + j as u32 * inc_col) % 256) as u8;
         }
     }
     grid[0][0] = 0;
@@ -141,7 +147,7 @@ fn generate_map(rows: usize, cols: usize) -> Vec<Vec<u8>> {
     grid
 }
 
-fn save_map(grid: &Vec<Vec<u8>>, file: &str) -> io::Result<()> {
+fn save_map(grid: &[Vec<u8>], file: &str) -> io::Result<()> {
     let mut f = File::create(file)?;
     for row in grid {
         for &v in row {
@@ -158,7 +164,11 @@ fn read_map(file: &str) -> io::Result<Vec<Vec<u8>>> {
     let mut grid = vec![];
     for line in reader.lines() {
         let line = line?;
-        let row: Vec<u8> = line.split_whitespace().filter(|s| !s.is_empty()).map(|s| u8::from_str_radix(s, 16).unwrap()).collect();
+        let row: Vec<u8> = line
+            .split_whitespace()
+            .filter(|s| !s.is_empty())
+            .map(|s| u8::from_str_radix(s, 16).unwrap())
+            .collect();
         if !row.is_empty() {
             grid.push(row);
         }
@@ -166,8 +176,8 @@ fn read_map(file: &str) -> io::Result<Vec<Vec<u8>>> {
     Ok(grid)
 }
 
-fn compute_paths(grid: &Vec<Vec<u8>>) -> (Cost, Vec<(usize, usize)>, Cost, Vec<(usize, usize)>) {
-    let directions = vec![(1isize, 0), (0, 1)]; 
+fn compute_paths(grid: &[Vec<u8>]) -> (Cost, Path, Cost, Path) {
+    let directions = vec![(1isize, 0), (0, 1)];
     let (min_cost, min_parent) = dijkstra_min(grid, &directions);
     let min_path = reconstruct_path(&min_parent, grid.len() - 1, grid[0].len() - 1);
     let (max_cost, max_parent) = dijkstra_max(grid, &directions);
@@ -175,7 +185,7 @@ fn compute_paths(grid: &Vec<Vec<u8>>) -> (Cost, Vec<(usize, usize)>, Cost, Vec<(
     (min_cost, min_path, max_cost, max_path)
 }
 
-fn dijkstra_min(grid: &Vec<Vec<u8>>, dirs: &Vec<(isize, isize)>) -> (Cost, Vec<Vec<Option<(usize, usize)>>> ) {
+fn dijkstra_min(grid: &[Vec<u8>], dirs: &[(isize, isize)]) -> (Cost, ParentMap) {
     let rows = grid.len();
     let cols = grid[0].len();
     let mut dist = vec![vec![u32::MAX; cols]; rows];
@@ -184,7 +194,9 @@ fn dijkstra_min(grid: &Vec<Vec<u8>>, dirs: &Vec<(isize, isize)>) -> (Cost, Vec<V
     pq.push(Reverse((dist[0][0], 0, 0)));
     let mut parent = vec![vec![None; cols]; rows];
     while let Some(Reverse((cost, i, j))) = pq.pop() {
-        if cost > dist[i][j] { continue; }
+        if cost > dist[i][j] {
+            continue;
+        }
         for &(di, dj) in dirs {
             let ni = i as isize + di;
             let nj = j as isize + dj;
@@ -203,7 +215,7 @@ fn dijkstra_min(grid: &Vec<Vec<u8>>, dirs: &Vec<(isize, isize)>) -> (Cost, Vec<V
     (dist[rows - 1][cols - 1], parent)
 }
 
-fn dijkstra_max(grid: &Vec<Vec<u8>>, dirs: &Vec<(isize, isize)>) -> (Cost, Vec<Vec<Option<(usize, usize)>>> ) {
+fn dijkstra_max(grid: &[Vec<u8>], dirs: &[(isize, isize)]) -> (Cost, ParentMap) {
     let rows = grid.len();
     let cols = grid[0].len();
     let mut dist = vec![vec![0; cols]; rows];
@@ -212,7 +224,9 @@ fn dijkstra_max(grid: &Vec<Vec<u8>>, dirs: &Vec<(isize, isize)>) -> (Cost, Vec<V
     pq.push((dist[0][0], 0, 0));
     let mut parent = vec![vec![None; cols]; rows];
     while let Some((cost, i, j)) = pq.pop() {
-        if cost < dist[i][j] { continue; }
+        if cost < dist[i][j] {
+            continue;
+        }
         for &(di, dj) in dirs {
             let ni = i as isize + di;
             let nj = j as isize + dj;
@@ -231,7 +245,7 @@ fn dijkstra_max(grid: &Vec<Vec<u8>>, dirs: &Vec<(isize, isize)>) -> (Cost, Vec<V
     (dist[rows - 1][cols - 1], parent)
 }
 
-fn reconstruct_path(parent: &Vec<Vec<Option<(usize, usize)>>>, mut i: usize, mut j: usize) -> Vec<(usize, usize)> {
+fn reconstruct_path(parent: &ParentMap, mut i: usize, mut j: usize) -> Path {
     let mut path = vec![(i, j)];
     while let Some((pi, pj)) = parent[i][j] {
         path.push((pi, pj));
@@ -242,7 +256,7 @@ fn reconstruct_path(parent: &Vec<Vec<Option<(usize, usize)>>>, mut i: usize, mut
     path
 }
 
-fn print_path(path: &Vec<(usize, usize)>) {
+fn print_path(path: &Path) {
     for (k, &(i, j)) in path.iter().enumerate() {
         if k > 0 {
             print!("-");
@@ -252,7 +266,7 @@ fn print_path(path: &Vec<(usize, usize)>) {
     println!();
 }
 
-fn print_step_costs(path: &Vec<(usize, usize)>, grid: &Vec<Vec<u8>>) {
+fn print_step_costs(path: &Path, grid: &[Vec<u8>]) {
     let mut first = true;
     for &(i, j) in path {
         if first {
@@ -281,10 +295,14 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     } else {
         (c, 0.0, x)
     };
-    (((rp + m) * 255.0) as u8, ((gp + m) * 255.0) as u8, ((bp + m) * 255.0) as u8)
+    (
+        ((rp + m) * 255.0) as u8,
+        ((gp + m) * 255.0) as u8,
+        ((bp + m) * 255.0) as u8,
+    )
 }
 
-fn print_grid_colored(grid: &Vec<Vec<u8>>, path: &Vec<(usize, usize)>, path_color: &str) {
+fn print_grid_colored(grid: &[Vec<u8>], path: &Path, path_color: &str) {
     let path_set: HashSet<(usize, usize)> = path.iter().cloned().collect();
     for i in 0..grid.len() {
         for j in 0..grid[0].len() {
@@ -306,7 +324,7 @@ fn print_grid_colored(grid: &Vec<Vec<u8>>, path: &Vec<(usize, usize)>, path_colo
     }
 }
 
-fn animate_min(grid: &Vec<Vec<u8>>) {
+fn animate_min(grid: &[Vec<u8>]) {
     let directions = vec![(1isize, 0), (0, 1)];
     let rows = grid.len();
     let cols = grid[0].len();
@@ -317,11 +335,11 @@ fn animate_min(grid: &Vec<Vec<u8>>) {
     let mut step = 1;
     while let Some(Reverse((cost, i, j))) = pq.pop() {
         println!("Step {}: Exploring ({}, {}) - cost: {}", step, i, j, cost);
-        for x in 0..rows {
-            for y in 0..cols {
+        for (x, row) in dist.iter().enumerate() {
+            for (y, &d) in row.iter().enumerate() {
                 if x == i && y == j {
                     print!("[*] ");
-                } else if dist[x][y] != u32::MAX {
+                } else if d != u32::MAX {
                     print!("[.] ");
                 } else {
                     print!("[ ] ");
