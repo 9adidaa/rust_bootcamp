@@ -45,8 +45,7 @@ fn main() -> io::Result<()> {
             "--animate" => animate = true,
             arg if !arg.starts_with('-') => map_file = Some(arg.to_string()),
             _ => {
-                println!("Unknown option: {}", args[i]);
-                print_help();
+                eprintln!("error");
                 process::exit(2);
             }
         }
@@ -94,20 +93,24 @@ fn main() -> io::Result<()> {
         print_step_costs(&max_path, g);
     }
 
-    if visualize && let Some(ref g) = grid {
-        println!("\nHEXADECIMAL GRID (rainbow gradient):");
-        print_grid_colored(g, &vec![], "");
-        if both {
-            let (_, min_path, _, max_path) = compute_paths(g);
-            println!("\nMIN COST PATH (shown in WHITE):");
-            print_grid_colored(g, &min_path, "white");
-            println!("\nMAX COST PATH (shown in RED):");
-            print_grid_colored(g, &max_path, "red");
+    if visualize {
+        if let Some(ref g) = grid {
+            println!("\nHEXADECIMAL GRID (rainbow gradient):");
+            print_grid_colored(g, &vec![], "");
+            if both {
+                let (_, min_path, _, max_path) = compute_paths(g);
+                println!("\nMIN COST PATH (shown in WHITE):");
+                print_grid_colored(g, &min_path, "white");
+                println!("\nMAX COST PATH (shown in RED):");
+                print_grid_colored(g, &max_path, "red");
+            }
         }
     }
 
-    if animate && let Some(ref g) = grid {
-        animate_min(g);
+    if animate {
+        if let Some(ref g) = grid {
+            animate_min(g);
+        }
     }
 
     Ok(())
@@ -304,9 +307,8 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
 
 fn print_grid_colored(grid: &[Vec<u8>], path: &Path, path_color: &str) {
     let path_set: HashSet<(usize, usize)> = path.iter().cloned().collect();
-    for i in 0..grid.len() {
-        for j in 0..grid[0].len() {
-            let v = grid[i][j];
+    for (i, row) in grid.iter().enumerate() {
+        for (j, &v) in row.iter().enumerate() {
             if path_set.contains(&(i, j)) {
                 let color_code = match path_color {
                     "white" => "\x1b[37m",
