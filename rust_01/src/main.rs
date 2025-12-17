@@ -69,10 +69,15 @@ fn main() {
 
     let mut freq: HashMap<String, usize> = HashMap::new();
 
+    let mut originals: HashMap<String, String> = HashMap::new();
+
     for w in text.split_whitespace() {
-        let clean = w.trim_matches(|c: char| !c.is_alphanumeric());
+        let clean = w.trim_matches(|c: char| !c.is_alphanumeric()).to_string();
         if clean.len() >= min_length && !clean.is_empty() {
-            *freq.entry(clean.to_string()).or_insert(0) += 1;
+            *freq.entry(clean.clone()).or_insert(0) += 1;
+            if w != clean {
+                originals.insert(clean, w.to_string());
+            }
         }
     }
 
@@ -85,10 +90,11 @@ fn main() {
         println!("Top {} words:", top_n);
     }
 
-    for (i, (w, c)) in list.iter().enumerate() {
+    for (i, (clean_word, count)) in list.iter().enumerate() {
         if i >= top_n {
             break;
         }
-        println!("{}: {}", w, c);
+        let display_word = originals.get(clean_word).unwrap_or(clean_word);
+        println!("{}: {}", display_word, count);
     }
 }
